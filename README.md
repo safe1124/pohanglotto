@@ -18,7 +18,18 @@ lotto-main/
 ## 🚀 사용 방법
 
 1. `index.html`을 더블 클릭하거나 정적 서버에서 열면 바로 예측을 체험할 수 있습니다.
-2. 버튼을 누를 때마다 LSTM·랜덤 포레스트·회귀 기반의 알고리즘이 다섯 세트의 번호를 생성합니다.
+2. 버튼을 누를 때마다 LSTM(최근 12·24·36회)과 랜덤 포레스트 기반 알고리즘이 다섯 세트의 번호를 생성합니다.
+
+### TensorFlow LSTM 비교 실험
+
+회차별 번호 데이터를 CSV(`draw_no,n1..n6`)로 준비한 뒤 아래 명령으로 12·24·36회 창을 각각 학습/예측할 수 있습니다.
+
+```bash
+pip install tensorflow pandas numpy
+python3 scripts/train_lstm_models.py --csv lotto.csv
+```
+
+출력은 창 길이별로 가장 확률이 높은 6개 번호 조합을 제공합니다.
 
 ### 로컬 서버에서 실행하고 싶을 때
 

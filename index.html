@@ -277,7 +277,7 @@
                     ⏳ 번호를 정밀 분석 중입니다...
                 </div>
             </div>
-            <p class="hint">버튼을 누를 때마다 LSTM · 랜덤 포레스트 · 회귀 모델을 기반으로 새로운 조합이 생성됩니다.</p>
+            <p class="hint">버튼을 누를 때마다 LSTM(최근 12·24·36회)과 랜덤 포레스트 기반의 다섯 조합이 생성됩니다.</p>
         </header>
 
         <section class="results" id="results" style="display: none;">
@@ -308,7 +308,11 @@
         const MAX_NUMBER = 45;
         const NUMBERS_PER_DRAW = 6;
         const RECENT_WINDOW = 30;
-        const LSTM_WINDOW = 12;
+        const LSTM_CONFIGS = [
+            { window: 12, freqWeight: 2.4, momentumWeight: 3.0, recencyWeight: 3.6, overdueWeight: 1.2, decayBase: 0.52, neverSeenBoost: 0.35, recentPenalty: 0.18, recentSuppressRounds: 3 },
+            { window: 24, freqWeight: 3.0, momentumWeight: 2.4, recencyWeight: 2.2, overdueWeight: 1.4, decayBase: 0.63, neverSeenBoost: 0.4, recentPenalty: 0.22, recentSuppressRounds: 3 },
+            { window: 36, freqWeight: 3.4, momentumWeight: 2.0, recencyWeight: 1.6, overdueWeight: 1.8, decayBase: 0.7, neverSeenBoost: 0.45, recentPenalty: 0.28, recentSuppressRounds: 4 },
+        ];
 
         const rawDraws = Array.isArray(window.LOTTO_DATA) ? window.LOTTO_DATA : [];
         const DRAWS = rawDraws
@@ -438,138 +442,118 @@
             return selected.sort((a, b) => a - b);
         }
 
-        function sanitizeNumbers(values, stats) {
-            const unique = [];
-            const seen = new Set();
-
-            values.forEach((value) => {
-                if (unique.length >= NUMBERS_PER_DRAW) {
-                    return;
-                }
-                let candidate = Math.round(Number(value));
-                if (!Number.isFinite(candidate)) {
-                    return;
-                }
-                if (candidate < MIN_NUMBER) candidate = MIN_NUMBER;
-                if (candidate > MAX_NUMBER) candidate = MAX_NUMBER;
-                const original = candidate;
-                while (seen.has(candidate)) {
-                    candidate += 1;
-                    if (candidate > MAX_NUMBER) {
-                        candidate = MIN_NUMBER;
-                    }
-                    if (candidate === original) {
-                        break;
-                    }
-                }
-                if (!seen.has(candidate)) {
-                    unique.push(candidate);
-                    seen.add(candidate);
-                }
-            });
-
-            if (unique.length < NUMBERS_PER_DRAW) {
-                const weights = stats ? stats.freq : Array(MAX_NUMBER + 1).fill(1);
-                const filler = weightedSample(weights, NUMBERS_PER_DRAW - unique.length, { exclude: unique });
-                unique.push(...filler);
+        function generateLstmSet(draws, stats, config) {
+            const effectiveWindow = Math.min(config.window, draws.length);
+            if (effectiveWindow === 0) {
+                return { numbers: [], effectiveWindow: 0 };
             }
 
-            unique.sort((a, b) => a - b);
-            return unique.slice(0, NUMBERS_PER_DRAW);
-        }
+            const slice = draws.slice(draws.length - effectiveWindow);
+            const freq = Array(MAX_NUMBER + 1).fill(0);
+            const momentum = Array(MAX_NUMBER + 1).fill(0);
+            const recencyDistance = Array(MAX_NUMBER + 1).fill(Number.POSITIVE_INFINITY);
+            const suppressRounds = Math.max(1, Math.min(config.recentSuppressRounds ?? 1, draws.length));
+            const suppressedDraws = [];
+            const suppressedNumbers = new Set();
 
-        function generateLstmStyle(draws, stats) {
-            const windowSize = Math.min(LSTM_WINDOW, draws.length);
-            if (windowSize === 0) {
-                return [];
-            }
-            const sums = Array(NUMBERS_PER_DRAW).fill(0);
-            const weights = Array(NUMBERS_PER_DRAW).fill(0);
-
-            for (let offset = 0; offset < windowSize; offset += 1) {
+            for (let offset = 0; offset < suppressRounds; offset += 1) {
                 const draw = draws[draws.length - 1 - offset];
-                const weight = Math.pow(0.7, offset);
-                draw.numbers.forEach((num, idx) => {
-                    sums[idx] += num * weight;
-                    weights[idx] += weight;
+                const sortedNumbers = draw.numbers.slice().sort((a, b) => a - b);
+                suppressedDraws.push({ numbers: sortedNumbers, lookup: new Set(sortedNumbers) });
+                sortedNumbers.forEach((num) => suppressedNumbers.add(num));
+            }
+
+            for (let offset = 0; offset < effectiveWindow; offset += 1) {
+                const draw = slice[slice.length - 1 - offset];
+                const weight = Math.pow(config.decayBase ?? 0.6, offset);
+                draw.numbers.forEach((num) => {
+                    if (num >= MIN_NUMBER && num <= MAX_NUMBER) {
+                        freq[num] += 1;
+                        momentum[num] += weight;
+                        if (recencyDistance[num] === Number.POSITIVE_INFINITY) {
+                            recencyDistance[num] = offset + 1;
+                        }
+                    }
                 });
             }
 
-            const averages = sums.map((sum, idx) => sum / (weights[idx] || 1));
-            return sanitizeNumbers(averages, stats);
+            const entries = [];
+            for (let num = MIN_NUMBER; num <= MAX_NUMBER; num += 1) {
+                const freqRatio = freq[num] / Math.max(1, effectiveWindow);
+                const momentumScore = momentum[num] / Math.max(1, effectiveWindow);
+                const recencyScore =
+                    recencyDistance[num] === Number.POSITIVE_INFINITY ? 0 : 1 / recencyDistance[num];
+                const globalDistance = stats.lastSeen[num];
+                const overdueScore =
+                    globalDistance === Number.POSITIVE_INFINITY
+                        ? config.neverSeenBoost ?? 0
+                        : Math.log1p(globalDistance) / Math.log1p(stats.total || 1);
+
+                const score =
+                    (freqRatio * (config.freqWeight ?? 1)) +
+                    (momentumScore * (config.momentumWeight ?? 1)) +
+                    (recencyScore * (config.recencyWeight ?? 1)) +
+                    (overdueScore * (config.overdueWeight ?? 1));
+
+                const penalizedScore = suppressedNumbers.has(num)
+                    ? score * (config.recentPenalty ?? 0.3)
+                    : score;
+
+                entries.push({
+                    num,
+                    score: penalizedScore,
+                    freq: freq[num],
+                    recency: recencyDistance[num],
+                });
+            }
+
+            entries.sort((a, b) => {
+                if (b.score !== a.score) {
+                    return b.score - a.score;
+                }
+                if (b.freq !== a.freq) {
+                    return b.freq - a.freq;
+                }
+                if (a.recency !== b.recency) {
+                    return a.recency - b.recency;
+                }
+                return a.num - b.num;
+            });
+
+            const numbers = entries.slice(0, NUMBERS_PER_DRAW).map((entry) => entry.num).sort((a, b) => a - b);
+
+            const matchesSuppressedDraw = suppressedDraws.find((record) => {
+                if (!record || record.numbers.length !== numbers.length) {
+                    return false;
+                }
+                for (let idx = 0; idx < numbers.length; idx += 1) {
+                    if (record.numbers[idx] !== numbers[idx]) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            if (matchesSuppressedDraw) {
+                for (let idx = NUMBERS_PER_DRAW; idx < entries.length; idx += 1) {
+                    const candidate = entries[idx].num;
+                    if (suppressedNumbers.has(candidate)) {
+                        continue;
+                    }
+                    const replaceIndex = numbers.findIndex((num) => matchesSuppressedDraw.lookup.has(num));
+                    if (replaceIndex !== -1) {
+                        numbers[replaceIndex] = candidate;
+                        numbers.sort((a, b) => a - b);
+                        break;
+                    }
+                }
+            }
+
+            return { numbers, effectiveWindow };
         }
 
         function generateRandomForestStyle(stats) {
             return weightedSample(stats.freq, NUMBERS_PER_DRAW);
-        }
-
-        function generateRegressionStyle(draws, stats) {
-            const total = stats.total || draws.length || 1;
-            const window = stats.recentWindow || Math.min(RECENT_WINDOW, total);
-            const scores = [];
-
-            for (let num = MIN_NUMBER; num <= MAX_NUMBER; num += 1) {
-                const totalRate = (stats.freq[num] || 0) / total;
-                const recentRate = window > 0 ? (stats.recent[num] || 0) / window : 0;
-                const recencyBoost = stats.lastSeen[num] === Number.POSITIVE_INFINITY ? 0 : 1 / stats.lastSeen[num];
-                const slope = recentRate - totalRate;
-                const score = (recentRate * 3.2) + (totalRate * 1.1) + (recencyBoost * 4.5) + (slope * 5);
-                scores.push({ num, score });
-            }
-
-            scores.sort((a, b) => b.score - a.score);
-            const candidates = scores.slice(0, 12).map((item) => item.num);
-            return sanitizeNumbers(candidates, stats);
-        }
-
-        function generateHybridStyle(baseSets, stats) {
-            const weights = stats.freq.slice();
-            const boostNumbers = [];
-
-            baseSets.forEach((set) => {
-                set.forEach((num) => {
-                    if (weights[num] !== undefined) {
-                        weights[num] += 4;
-                    }
-                    boostNumbers.push(num);
-                });
-            });
-
-            return weightedSample(weights, NUMBERS_PER_DRAW, { boost: boostNumbers });
-        }
-
-        function generateLuckySet(draws) {
-            const recentRounds = Math.min(5, draws.length);
-            const avoid = new Set();
-
-            for (let i = 1; i <= recentRounds; i += 1) {
-                draws[draws.length - i].numbers.forEach((num) => avoid.add(num));
-            }
-
-            const picks = [];
-            let attempts = 0;
-
-            while (picks.length < NUMBERS_PER_DRAW && attempts < 200) {
-                attempts += 1;
-                const candidate = Math.floor(Math.random() * (MAX_NUMBER - MIN_NUMBER + 1)) + MIN_NUMBER;
-                if (avoid.has(candidate) && attempts < 120) {
-                    continue;
-                }
-                if (!picks.includes(candidate)) {
-                    picks.push(candidate);
-                }
-            }
-
-            if (picks.length < NUMBERS_PER_DRAW) {
-                for (let num = MIN_NUMBER; num <= MAX_NUMBER && picks.length < NUMBERS_PER_DRAW; num += 1) {
-                    if (!picks.includes(num)) {
-                        picks.push(num);
-                    }
-                }
-            }
-
-            picks.sort((a, b) => a - b);
-            return picks;
         }
 
         function renderNumbers(container, numbers) {
@@ -642,18 +626,21 @@
                         drawCountInfo.textContent = `총 ${stats.total}개 회차 기반 (최신: ${lastDraw.round}회)`;
                     }
 
-                    const lstmSet = generateLstmStyle(DRAWS, stats);
-                    const rfSet = generateRandomForestStyle(stats);
-                    const regSet = generateRegressionStyle(DRAWS, stats);
-                    const hybridSet = generateHybridStyle([lstmSet, rfSet, regSet], stats);
-                    const luckySet = generateLuckySet(DRAWS);
+                    const lstmPredictions = LSTM_CONFIGS.map((config) => {
+                        const result = generateLstmSet(DRAWS, stats, config);
+                        return {
+                            label: `📈 LSTM 예측 (최근 ${result.effectiveWindow}회)`,
+                            numbers: result.numbers,
+                        };
+                    });
+                    const randomForestPredictions = Array.from({ length: 2 }, (_, idx) => ({
+                        label: `🌳 랜덤 포레스트 예측 #${idx + 1}`,
+                        numbers: generateRandomForestStyle(stats),
+                    }));
 
                     const predictions = [
-                        { label: '📈 LSTM 예측', numbers: lstmSet },
-                        { label: '🌳 랜덤 포레스트 예측', numbers: rfSet },
-                        { label: '📊 회귀 분석 예측', numbers: regSet },
-                        { label: '✨ 앙상블 추천', numbers: hybridSet },
-                        { label: '🍀 행운 추천', numbers: luckySet },
+                        ...lstmPredictions,
+                        ...randomForestPredictions,
                     ];
 
                     const predictionsDiv = document.getElementById('predictions');
