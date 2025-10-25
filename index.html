@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포항로또</title>
+    <style>
+        :root {
+            --bg: #f5f5f7;
+            --surface: #ffffff;
+            --surface-muted: #f5f5f7;
+            --text-primary: #1d1d1f;
+            --text-secondary: #515154;
+            --accent: #0071e3;
+            --accent-hover: #0a84ff;
+            --border: rgba(0, 0, 0, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(180deg, #f9fafc 0%, #f0f2f5 60%, #f5f5f7 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 0;
+        }
+
+        .page {
+            width: min(1080px, calc(100% - 48px));
+            background: var(--surface);
+            border-radius: 32px;
+            box-shadow: 0 40px 90px rgba(15, 23, 42, 0.10);
+            padding: 72px 72px 56px;
+            display: flex;
+            flex-direction: column;
+            gap: 56px;
+        }
+
+        .hero {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            text-align: center;
+        }
+
+        .badge {
+            align-self: center;
+            font-size: 13px;
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .headline {
+            font-size: clamp(2.6rem, 5vw, 3.6rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            align-self: center;
+            line-height: 1.6;
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .predict-btn {
+            background: var(--text-primary);
+            color: var(--surface);
+            border: none;
+            padding: 16px 40px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.3s ease, background 0.2s ease;
+        }
+
+        .predict-btn:hover {
+            transform: translateY(-2px);
+            background: #323232;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .predict-btn:disabled {
+            background: #d2d2d7;
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            font-weight: 500;
+            color: var(--accent-hover);
+        }
+
+        .hint {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .results {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .last-numbers {
+            background: linear-gradient(145deg, #f8f9fb 0%, #ffffff 100%);
+            border-radius: 28px;
+            padding: 32px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .last-numbers h3 {
+            font-size: 1.35rem;
+            font-weight: 600;
+        }
+
+        .numbers {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .number {
+            width: 60px;
+            height: 60px;
+            border-radius: 22px;
+            background: linear-gradient(180deg, #ffffff 0%, #f4f4f6 100%);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 12px 30px rgba(15, 23, 42, 0.05);
+        }
+
+        .bonus-section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .bonus-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.02em;
+        }
+
+        #predictions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+        }
+
+        .prediction-card {
+            background: linear-gradient(160deg, #fafafa 0%, #ffffff 100%);
+            border-radius: 24px;
+            padding: 24px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.04);
+            transition: transform 0.2s ease, box-shadow 0.3s ease;
+        }
+
+        .prediction-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 30px 60px rgba(15, 23, 42, 0.08);
+        }
+
+        .model-name {
+            font-weight: 600;
+            margin-bottom: 16px;
+            font-size: 1.05rem;
+            color: var(--text-primary);
+        }
+
+        .warning {
+            background: linear-gradient(135deg, #fef6d8 0%, #fff5cc 100%);
+            border-radius: 20px;
+            padding: 18px 24px;
+            border: 1px solid rgba(255, 204, 0, 0.3);
+            color: #8a6d1f;
+            display: flex;
+            justify-content: center;
+            font-size: 0.95rem;
+        }
+
+        .empty-state {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            .page {
+                padding: 56px 32px 48px;
+                border-radius: 28px;
+            }
+
+            .number {
+                width: 54px;
+                height: 54px;
+                border-radius: 20px;
+                font-size: 1rem;
+            }
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 24px 0;
+            }
+
+            .page {
+                width: calc(100% - 28px);
+                padding: 48px 24px 40px;
+                border-radius: 24px;
+            }
+
+            .numbers {
+                gap: 10px;
+            }
+
+            .number {
+                width: 48px;
+                height: 48px;
+                font-size: 0.95rem;
+                border-radius: 18px;
+            }
+
+            .prediction-card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="hero">
+            <p class="badge">POHANG LOTTO</p>
+            <h1 class="headline">포항로또</h1>
+            <p class="subtitle">
+                20년 넘는 회차 데이터를 기반으로 로또마스터가 선별한 다섯 가지 추천 조합을 만나보세요.
+                새로운 회차가 공개될 때마다 번호 데이터는 즉시 갱신할 수 있습니다.
+            </p>
+            <div class="actions">
+                <button class="predict-btn" onclick="predictNumbers()">
+                    🔮 추천 번호 생성하기
+                </button>
+                <div class="loading" id="loading">
+                    ⏳ 번호를 정밀 분석 중입니다...
+                </div>
+            </div>
+            <p class="hint">버튼을 누를 때마다 LSTM(최근 12·24·36회)과 랜덤 포레스트 기반의 다섯 조합이 생성됩니다.</p>
+        </header>
+
+        <section class="results" id="results" style="display: none;">
+            <div class="last-numbers">
+                <h3>가장 최근 회차 번호</h3>
+                <p class="empty-state" id="noHistoryMessage" style="display: none;">
+                    등록된 회차가 없습니다. 먼저 데이터셋을 갱신해주세요.
+                </p>
+                <p class="empty-state" id="drawCountInfo" style="display: none;"></p>
+                <div class="numbers" id="lastNumbers"></div>
+                <div class="bonus-section" id="bonusWrapper" style="display: none;">
+                    <span class="bonus-label">보너스 번호</span>
+                    <div class="number" id="bonusNumber"></div>
+                </div>
+            </div>
+
+            <div id="predictions"></div>
+        </section>
+
+        <footer class="warning">
+            ⚠️ 로또마스터의 예측은 통계적 분석 결과로, 실제 당첨을 보장하지 않습니다.
+        </footer>
+    </div>
+
+    <script src="data/lotto_dataset.js"></script>
+    <script>
+        const MIN_NUMBER = 1;
+        const MAX_NUMBER = 45;
+        const NUMBERS_PER_DRAW = 6;
+        const RECENT_WINDOW = 30;
+        const LSTM_CONFIGS = [
+            { window: 12, freqWeight: 2.4, momentumWeight: 3.0, recencyWeight: 3.6, overdueWeight: 1.2, decayBase: 0.52, neverSeenBoost: 0.35, recentPenalty: 0.18, recentSuppressRounds: 3 },
+            { window: 24, freqWeight: 3.0, momentumWeight: 2.4, recencyWeight: 2.2, overdueWeight: 1.4, decayBase: 0.63, neverSeenBoost: 0.4, recentPenalty: 0.22, recentSuppressRounds: 3 },
+            { window: 36, freqWeight: 3.4, momentumWeight: 2.0, recencyWeight: 1.6, overdueWeight: 1.8, decayBase: 0.7, neverSeenBoost: 0.45, recentPenalty: 0.28, recentSuppressRounds: 4 },
+        ];
+
+        const rawDraws = Array.isArray(window.LOTTO_DATA) ? window.LOTTO_DATA : [];
+        const DRAWS = rawDraws
+            .map((draw) => {
+                const round = Number(draw?.round);
+                const numbers = Array.isArray(draw?.numbers)
+                    ? draw.numbers.map((num) => Number(num)).filter((num) => Number.isFinite(num))
+                    : [];
+
+                if (!Number.isFinite(round) || numbers.length !== NUMBERS_PER_DRAW) {
+                    return null;
+                }
+
+                const bonusValue = Number(draw?.bonus);
+
+                return {
+                    round,
+                    numbers: numbers.sort((a, b) => a - b),
+                    bonus: Number.isFinite(bonusValue) ? bonusValue : null,
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.round - b.round);
+
+        function computeStats(draws) {
+            const total = draws.length;
+            const freq = Array(MAX_NUMBER + 1).fill(0);
+            const recent = Array(MAX_NUMBER + 1).fill(0);
+            const lastSeen = Array(MAX_NUMBER + 1).fill(Number.POSITIVE_INFINITY);
+            const recentWindow = Math.min(RECENT_WINDOW, total);
+
+            draws.forEach((draw) => {
+                draw.numbers.forEach((num) => {
+                    if (num >= MIN_NUMBER && num <= MAX_NUMBER) {
+                        freq[num] += 1;
+                    }
+                });
+            });
+
+            for (let idx = total - 1; idx >= 0; idx -= 1) {
+                const draw = draws[idx];
+                const distance = total - idx;
+                draw.numbers.forEach((num) => {
+                    if (lastSeen[num] === Number.POSITIVE_INFINITY) {
+                        lastSeen[num] = distance;
+                    }
+                });
+                if (total - idx <= recentWindow) {
+                    draw.numbers.forEach((num) => {
+                        recent[num] += 1;
+                    });
+                }
+            }
+
+            return { freq, recent, lastSeen, total, recentWindow };
+        }
+
+        function weightedSample(weights, count, options = {}) {
+            const { exclude = [], boost = [] } = options;
+            const excluded = new Set(exclude);
+            const boosted = new Set(boost);
+            const numbers = [];
+            const baseWeights = [];
+
+            for (let num = MIN_NUMBER; num <= MAX_NUMBER; num += 1) {
+                numbers.push(num);
+                let weight = (weights && Number.isFinite(weights[num]) ? weights[num] : 0) + 1;
+                if (boosted.has(num)) {
+                    weight *= 1.35;
+                }
+                if (excluded.has(num)) {
+                    weight = 0;
+                }
+                baseWeights.push(weight);
+            }
+
+            const selected = [];
+            const activeWeights = baseWeights.slice();
+            let safety = 0;
+
+            while (selected.length < count && safety < 500) {
+                safety += 1;
+                const totalWeight = activeWeights.reduce((sum, value) => sum + value, 0);
+
+                if (totalWeight <= 0) {
+                    break;
+                }
+
+                let target = Math.random() * totalWeight;
+                let chosenIndex = -1;
+
+                for (let i = 0; i < activeWeights.length; i += 1) {
+                    const weight = activeWeights[i];
+                    if (weight <= 0) {
+                        continue;
+                    }
+                    if (target <= weight) {
+                        chosenIndex = i;
+                        break;
+                    }
+                    target -= weight;
+                }
+
+                if (chosenIndex === -1) {
+                    continue;
+                }
+
+                const number = numbers[chosenIndex];
+                if (selected.includes(number) || excluded.has(number)) {
+                    activeWeights[chosenIndex] = 0;
+                    continue;
+                }
+
+                selected.push(number);
+                activeWeights[chosenIndex] = 0;
+            }
+
+            if (selected.length < count) {
+                for (let i = 0; i < numbers.length && selected.length < count; i += 1) {
+                    const number = numbers[i];
+                    if (!excluded.has(number) && !selected.includes(number)) {
+                        selected.push(number);
+                    }
+                }
+            }
+
+            return selected.sort((a, b) => a - b);
+        }
+
+        function generateLstmSet(draws, stats, config) {
+            const effectiveWindow = Math.min(config.window, draws.length);
+            if (effectiveWindow === 0) {
+                return { numbers: [], effectiveWindow: 0 };
+            }
+
+            const slice = draws.slice(draws.length - effectiveWindow);
+            const freq = Array(MAX_NUMBER + 1).fill(0);
+            const momentum = Array(MAX_NUMBER + 1).fill(0);
+            const recencyDistance = Array(MAX_NUMBER + 1).fill(Number.POSITIVE_INFINITY);
+            const suppressRounds = Math.max(1, Math.min(config.recentSuppressRounds ?? 1, draws.length));
+            const suppressedDraws = [];
+            const suppressedNumbers = new Set();
+
+            for (let offset = 0; offset < suppressRounds; offset += 1) {
+                const draw = draws[draws.length - 1 - offset];
+                const sortedNumbers = draw.numbers.slice().sort((a, b) => a - b);
+                suppressedDraws.push({ numbers: sortedNumbers, lookup: new Set(sortedNumbers) });
+                sortedNumbers.forEach((num) => suppressedNumbers.add(num));
+            }
+
+            for (let offset = 0; offset < effectiveWindow; offset += 1) {
+                const draw = slice[slice.length - 1 - offset];
+                const weight = Math.pow(config.decayBase ?? 0.6, offset);
+                draw.numbers.forEach((num) => {
+                    if (num >= MIN_NUMBER && num <= MAX_NUMBER) {
+                        freq[num] += 1;
+                        momentum[num] += weight;
+                        if (recencyDistance[num] === Number.POSITIVE_INFINITY) {
+                            recencyDistance[num] = offset + 1;
+                        }
+                    }
+                });
+            }
+
+            const entries = [];
+            for (let num = MIN_NUMBER; num <= MAX_NUMBER; num += 1) {
+                const freqRatio = freq[num] / Math.max(1, effectiveWindow);
+                const momentumScore = momentum[num] / Math.max(1, effectiveWindow);
+                const recencyScore =
+                    recencyDistance[num] === Number.POSITIVE_INFINITY ? 0 : 1 / recencyDistance[num];
+                const globalDistance = stats.lastSeen[num];
+                const overdueScore =
+                    globalDistance === Number.POSITIVE_INFINITY
+                        ? config.neverSeenBoost ?? 0
+                        : Math.log1p(globalDistance) / Math.log1p(stats.total || 1);
+
+                const score =
+                    (freqRatio * (config.freqWeight ?? 1)) +
+                    (momentumScore * (config.momentumWeight ?? 1)) +
+                    (recencyScore * (config.recencyWeight ?? 1)) +
+                    (overdueScore * (config.overdueWeight ?? 1));
+
+                const penalizedScore = suppressedNumbers.has(num)
+                    ? score * (config.recentPenalty ?? 0.3)
+                    : score;
+
+                entries.push({
+                    num,
+                    score: penalizedScore,
+                    freq: freq[num],
+                    recency: recencyDistance[num],
+                });
+            }
+
+            entries.sort((a, b) => {
+                if (b.score !== a.score) {
+                    return b.score - a.score;
+                }
+                if (b.freq !== a.freq) {
+                    return b.freq - a.freq;
+                }
+                if (a.recency !== b.recency) {
+                    return a.recency - b.recency;
+                }
+                return a.num - b.num;
+            });
+
+            const numbers = entries.slice(0, NUMBERS_PER_DRAW).map((entry) => entry.num).sort((a, b) => a - b);
+
+            const matchesSuppressedDraw = suppressedDraws.find((record) => {
+                if (!record || record.numbers.length !== numbers.length) {
+                    return false;
+                }
+                for (let idx = 0; idx < numbers.length; idx += 1) {
+                    if (record.numbers[idx] !== numbers[idx]) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            if (matchesSuppressedDraw) {
+                for (let idx = NUMBERS_PER_DRAW; idx < entries.length; idx += 1) {
+                    const candidate = entries[idx].num;
+                    if (suppressedNumbers.has(candidate)) {
+                        continue;
+                    }
+                    const replaceIndex = numbers.findIndex((num) => matchesSuppressedDraw.lookup.has(num));
+                    if (replaceIndex !== -1) {
+                        numbers[replaceIndex] = candidate;
+                        numbers.sort((a, b) => a - b);
+                        break;
+                    }
+                }
+            }
+
+            return { numbers, effectiveWindow };
+        }
+
+        function generateRandomForestStyle(stats) {
+            return weightedSample(stats.freq, NUMBERS_PER_DRAW);
+        }
+
+        function renderNumbers(container, numbers) {
+            if (!container) {
+                return;
+            }
+            container.innerHTML = '';
+            numbers.forEach((num) => {
+                const numberDiv = document.createElement('div');
+                numberDiv.className = 'number';
+                numberDiv.textContent = num;
+                container.appendChild(numberDiv);
+            });
+        }
+
+        function clearPredictions() {
+            const predictionsDiv = document.getElementById('predictions');
+            if (predictionsDiv) {
+                predictionsDiv.innerHTML = '';
+            }
+        }
+
+        function predictNumbers() {
+            const btn = document.querySelector('.predict-btn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '분석중...';
+            }
+            if (loading) {
+                loading.style.display = 'block';
+            }
+            if (results) {
+                results.style.display = 'none';
+            }
+            clearPredictions();
+
+            window.setTimeout(() => {
+                try {
+                    if (DRAWS.length === 0) {
+                        throw new Error('회차 데이터가 없습니다.');
+                    }
+
+                    const stats = computeStats(DRAWS);
+                    const lastDraw = DRAWS[DRAWS.length - 1];
+                    const lastNumbersDiv = document.getElementById('lastNumbers');
+                    const noHistoryMessage = document.getElementById('noHistoryMessage');
+                    const drawCountInfo = document.getElementById('drawCountInfo');
+                    const bonusWrapper = document.getElementById('bonusWrapper');
+                    const bonusNumber = document.getElementById('bonusNumber');
+
+                    renderNumbers(lastNumbersDiv, lastDraw.numbers);
+
+                    if (bonusWrapper && bonusNumber) {
+                        if (lastDraw.bonus != null) {
+                            bonusNumber.textContent = lastDraw.bonus;
+                            bonusWrapper.style.display = 'flex';
+                        } else {
+                            bonusWrapper.style.display = 'none';
+                        }
+                    }
+
+                    if (noHistoryMessage) {
+                        noHistoryMessage.style.display = 'none';
+                    }
+                    if (drawCountInfo) {
+                        drawCountInfo.style.display = 'block';
+                        drawCountInfo.textContent = `총 ${stats.total}개 회차 기반 (최신: ${lastDraw.round}회)`;
+                    }
+
+                    const lstmPredictions = LSTM_CONFIGS.map((config) => {
+                        const result = generateLstmSet(DRAWS, stats, config);
+                        return {
+                            label: `📈 LSTM 예측 (최근 ${result.effectiveWindow}회)`,
+                            numbers: result.numbers,
+                        };
+                    });
+                    const randomForestPredictions = Array.from({ length: 2 }, (_, idx) => ({
+                        label: `🌳 랜덤 포레스트 예측 #${idx + 1}`,
+                        numbers: generateRandomForestStyle(stats),
+                    }));
+
+                    const predictions = [
+                        ...lstmPredictions,
+                        ...randomForestPredictions,
+                    ];
+
+                    const predictionsDiv = document.getElementById('predictions');
+                    if (predictionsDiv) {
+                        predictionsDiv.innerHTML = '';
+                        predictions.forEach((set) => {
+                            const card = document.createElement('div');
+                            card.className = 'prediction-card';
+
+                            const modelName = document.createElement('div');
+                            modelName.className = 'model-name';
+                            modelName.textContent = set.label;
+
+                            const numbersDiv = document.createElement('div');
+                            numbersDiv.className = 'numbers';
+                            renderNumbers(numbersDiv, set.numbers);
+
+                            card.appendChild(modelName);
+                            card.appendChild(numbersDiv);
+                            predictionsDiv.appendChild(card);
+                        });
+                    }
+
+                    if (results) {
+                        results.style.display = 'block';
+                    }
+                } catch (error) {
+                    alert('예측 중 오류가 발생했습니다: ' + error.message);
+                    const noHistoryMessage = document.getElementById('noHistoryMessage');
+                    const drawCountInfo = document.getElementById('drawCountInfo');
+                    if (noHistoryMessage) {
+                        noHistoryMessage.style.display = 'block';
+                    }
+                    if (drawCountInfo) {
+                        drawCountInfo.style.display = 'none';
+                    }
+                } finally {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🔮 번호 예측하기';
+                    }
+                    if (loading) {
+                        loading.style.display = 'none';
+                    }
+                }
+            }, 420);
+        }
+    </script>
+</body>
+</html>
